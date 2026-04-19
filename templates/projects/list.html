@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}プロジェクト一覧{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">プロジェクト一覧
+    <small class="text-muted fs-6 ms-2">{{ projects | length }} 件</small>
+  </h2>
+  <a href="{{ url_for('project_new') }}" class="btn btn-primary">
+    <i class="bi bi-plus-lg"></i> 新規登録
+  </a>
+</div>
+
+<!-- フィルタ & ソートパネル -->
+<form method="get" id="filter-form">
+<div class="card mb-3">
+  <div class="card-body pb-2">
+
+    <div class="row g-3 align-items-start">
+
+      <!-- ステータスフィルタ（複数選択） -->
+      <div class="col-md-5">
+        <div class="fw-bold small mb-1">ステータス</div>
+        <div class="d-flex flex-wrap gap-2">
+          {% for s in statuses %}
+          <div class="form-check form-check-inline m-0">
+            <input class="form-check-input" type="checkbox" name="status" value="{{ s }}"
+                   id="st_{{ s }}" onchange="this.form.submit()"
+                   {% if s in status_filters %}checked{% endif %}>
+            <label class="form-check-label" for="st_{{ s }}">
+              <span class="badge badge-status-{{ s }}">{{ s }}</span>
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- 検収月フィルタ（複数選択） -->
+      <div class="col-md-5">
+        <div class="fw-bold small mb-1">検収年月</div>
+        {% if accepted_months %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for y, m in accepted_months %}
+          {% set val = y|string + "-" + m|string %}
+          <div class="form-check form-check-inline m-0">
+            <input class="form-check-input" type="checkbox" name="am" value="{{ val }}"
+                   id="am_{{ val }}" onchange="this.form.submit()"
+                   {% if val in am_filters %}checked{% endif %}>
+            <label class="form-check-label small" for="am_{{ val }}">{{ y }}年{{ m }}月</label>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <span class="text-muted small">検収年月が登録されたプロジェクトがありません</span>
+        {% endif %}
+      </div>
+
+      <!-- ソート -->
+      <div class="col-md-2">
+        <div class="fw-bold small mb-1">並び順</div>
+        <select name="sort" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="created_desc" {% if sort == "created_desc" %}selected{% endif %}>登録日（新しい順）</option>
+          <option value="accepted_asc"  {% if sort == "accepted_asc"  %}selected{% endif %}>検収月（昇順）</option>
+          <option value="accepted_desc" {% if sort == "accepted_desc" %}selected{% endif %}>検収月（降順）</option>
+        </select>
+      </div>
+
+    </div>
+
+    <!-- フィルタ中の場合だけリセットリンクを表示 -->
+    {% if status_filters or am_filters %}
+    <div class="mt-2">
+      <a href="{{ url_for('project_list', sort=sort) }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-x-circle"></i> フィルタをリセット
+      </a>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+</form>
+
+{% if projects %}
+<div class="row g-3">
+  {% for p in projects %}
+  <div class="col-12">
+    <div class="card {% if p.is_over_budget %}over-budget{% endif %}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <h5 class="card-title mb-1">
+              <a href="{{ url_for('project_detail', project_id=p.id) }}" class="text-decoration-none">{{ p.name }}</a>
+              <span class="badge badge-status-{{ p.status }} ms-2">{{ p.status }}</span>
+              {% if p.is_over_budget %}
+                <span class="badge bg-danger ms-1"><i class="bi bi-exclamation-triangle"></i> 予算超過</span>
+              {% endif %}
+            </h5>
+            <small class="text-muted">
+              {{ p.start_date }} 〜 {% if p.end_date %}{{ p.end_date }}{% else %}未定{% endif %}
+            </small>
+            {% if p.accepted_label %}
+              <span class="badge bg-info text-dark ms-2">検収: {{ p.accepted_label }}</span>
+            {% endif %}
+          </div>
+          <div class="text-end">
+            <div class="fw-bold fs-5">{{ p.total_amount | yen }}</div>
+            {% if p.sales_amount %}
+              <small class="text-muted">売上: {{ p.sales_amount | yen }}</small><br>
+              <small class="{% if p.net_sales < 0 %}text-danger{% else %}text-success{% endif %}">
+                純売り: {{ p.net_sales | yen }}
+              </small>
+            {% endif %}
+            {% if p.budget %}
+              <br><small class="{% if p.is_over_budget %}text-danger{% else %}text-muted{% endif %}">
+                予算残: {{ p.budget_remaining | yen }}
+              </small>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if p.budget and p.budget > 0 %}
+        <div class="mt-2">
+          <div class="progress" style="height: 6px;">
+            <div class="progress-bar {% if p.is_over_budget %}bg-danger{% elif p.budget_usage_pct > 80 %}bg-warning{% else %}bg-success{% endif %}"
+                 style="width: {{ p.budget_usage_pct }}%"></div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-inbox fs-1"></i>
+  <p class="mt-2">該当するプロジェクトがありません。</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}ダッシュボード{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">ダッシュボード</h2>
+  <a href="{{ url_for('project_new') }}" class="btn btn-primary">
+    <i class="bi bi-plus-lg"></i> 新規プロジェクト
+  </a>
+</div>
+
+<!-- 全体サマリー -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-2">
+    <div class="card text-center p-3">
+      <div class="fs-2 fw-bold text-primary">{{ total_projects }}</div>
+      <div class="text-muted small">プロジェクト数</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card text-center p-3">
+      <div class="fs-2 fw-bold text-success">{{ active_projects }}</div>
+      <div class="text-muted small">進行中</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center p-3">
+      <div class="fs-5 fw-bold">{{ total_sales | yen }}</div>
+      <div class="text-muted small">総売上</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center p-3">
+      <div class="fs-5 fw-bold {{ 'text-danger' if total_net < 0 else 'text-success' }}">
+        {{ total_net | yen }}
+      </div>
+      <div class="text-muted small">総純売り</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card text-center p-3 {% if over_budget_count > 0 %}border-danger{% endif %}">
+      <div class="fs-2 fw-bold {% if over_budget_count > 0 %}text-danger{% else %}text-secondary{% endif %}">
+        {{ over_budget_count }}
+      </div>
+      <div class="text-muted small">予算超過</div>
+    </div>
+  </div>
+</div>
+
+<!-- 年度別月次集計 -->
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-calendar3 me-1"></i>月次集計（{{ nendo }}年度 ／ {{ nendo }}年4月〜{{ nendo + 1 }}年3月）</span>
+    <div class="d-flex align-items-center gap-2">
+      <span class="text-muted small">年度切替：</span>
+      <div class="btn-group btn-group-sm">
+        {% for y in nendo_list %}
+        <a href="{{ url_for('dashboard', nendo=y) }}"
+           class="btn {% if y == nendo %}btn-dark{% else %}btn-outline-dark{% endif %}">
+          {{ y }}年度
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>月</th>
+            <th class="text-end">売上</th>
+            <th class="text-end">費用</th>
+            <th class="text-end">純売り</th>
+            <th class="text-center">件数</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in monthly_rows %}
+          {% set am_val = row.year|string + "-" + row.month|string %}
+          <tr {% if row.project_count == 0 %}class="text-muted"{% endif %}>
+            <td>
+              {% if row.project_count > 0 %}
+              <a href="{{ url_for('project_list', am=am_val) }}" class="text-decoration-none">
+                {{ row.year }}年{{ row.month }}月
+              </a>
+              {% else %}
+              {{ row.year }}年{{ row.month }}月
+              {% endif %}
+            </td>
+            <td class="text-end">{% if row.sales > 0 %}{{ row.sales | yen }}{% else %}－{% endif %}</td>
+            <td class="text-end">{% if row.expense > 0 %}{{ row.expense | yen }}{% else %}－{% endif %}</td>
+            <td class="text-end {% if row.net < 0 %}text-danger{% elif row.net > 0 %}text-success{% endif %}">
+              {% if row.sales > 0 or row.expense > 0 %}{{ row.net | yen }}{% else %}－{% endif %}
+            </td>
+            <td class="text-center">
+              {% if row.project_count > 0 %}
+              <a href="{{ url_for('project_list', am=am_val) }}" class="badge bg-secondary text-decoration-none">
+                {{ row.project_count }}
+              </a>
+              {% else %}－{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-secondary fw-bold">
+          <tr>
+            <td>年度合計</td>
+            <td class="text-end">{{ nendo_sales | yen }}</td>
+            <td class="text-end">{{ nendo_expense | yen }}</td>
+            <td class="text-end {{ 'text-danger' if nendo_net < 0 else 'text-success' }}">
+              {{ nendo_net | yen }}
+            </td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 費用上位プロジェクト -->
+<div class="card">
+  <div class="card-header">
+    <i class="bi bi-bar-chart me-1"></i>費用上位プロジェクト（Top 5）
+  </div>
+  <div class="card-body p-0">
+    {% if top_projects %}
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>プロジェクト名</th>
+          <th>ステータス</th>
+          <th class="text-end">売上</th>
+          <th class="text-end">費用合計</th>
+          <th class="text-end">純売り</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in top_projects %}
+        <tr>
+          <td>
+            <a href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a>
+            {% if p.is_over_budget %}
+              <span class="badge bg-danger ms-1">超過</span>
+            {% endif %}
+          </td>
+          <td><span class="badge badge-status-{{ p.status }}">{{ p.status }}</span></td>
+          <td class="text-end">{{ p.sales_amount | yen }}</td>
+          <td class="text-end">{{ p.total_amount | yen }}</td>
+          <td class="text-end {% if p.net_sales is not none and p.net_sales < 0 %}text-danger{% elif p.net_sales is not none %}text-success{% endif %}">
+            {{ p.net_sales | yen }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="text-center text-muted py-4">プロジェクトがまだありません。</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

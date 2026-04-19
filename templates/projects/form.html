@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{% if project %}プロジェクト編集{% else %}プロジェクト登録{% endif %}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header">
+        <h4 class="mb-0">{% if project %}プロジェクト編集{% else %}プロジェクト登録{% endif %}</h4>
+      </div>
+      <div class="card-body">
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label fw-bold">プロジェクト名 <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" required
+                   value="{{ project.name if project else '' }}">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">説明</label>
+            <textarea name="description" class="form-control" rows="3">{{ project.description if project else '' }}</textarea>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">独自採番</label>
+              <input type="text" name="project_number" class="form-control"
+                     placeholder="例：PJ-2026-001"
+                     value="{{ project.project_number if project and project.project_number else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">注文書番号</label>
+              <input type="text" name="order_number" class="form-control"
+                     placeholder="例：ORD-12345"
+                     value="{{ project.order_number if project and project.order_number else '' }}">
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">開始日 <span class="text-danger">*</span></label>
+              <input type="date" name="start_date" class="form-control" required
+                     value="{{ project.start_date if project else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">終了日</label>
+              <input type="date" name="end_date" class="form-control"
+                     value="{{ project.end_date if project else '' }}">
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">ステータス <span class="text-danger">*</span></label>
+              <select name="status" class="form-select" required>
+                {% for s in statuses %}
+                <option value="{{ s }}" {% if project and project.status == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">予算上限（円）</label>
+              <input type="number" name="budget" class="form-control" min="0"
+                     placeholder="未設定の場合は空欄"
+                     value="{{ project.budget if project and project.budget else '' }}">
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label fw-bold">売上金額（円）</label>
+              <div class="input-group">
+                <span class="input-group-text">¥</span>
+                <input type="number" name="sales_amount" class="form-control" min="0"
+                       placeholder="未設定の場合は空欄"
+                       value="{{ project.sales_amount if project and project.sales_amount else '' }}">
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">検収年</label>
+              <input type="number" name="accepted_year" class="form-control"
+                     min="2000" max="2099" placeholder="例: 2026"
+                     value="{{ project.accepted_year if project and project.accepted_year else '' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">検収月</label>
+              <select name="accepted_month" class="form-select">
+                <option value="">－</option>
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}"
+                  {% if project and project.accepted_month == m %}selected{% endif %}>
+                  {{ m }}月
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-lg"></i> 保存
+            </button>
+            {% if project %}
+            <a href="{{ url_for('project_detail', project_id=project.id) }}" class="btn btn-outline-secondary">キャンセル</a>
+            {% else %}
+            <a href="{{ url_for('project_list') }}" class="btn btn-outline-secondary">キャンセル</a>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

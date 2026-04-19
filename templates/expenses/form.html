@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{% if expense %}費用編集{% else %}費用登録{% endif %}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <div class="card">
+      <div class="card-header">
+        <nav aria-label="breadcrumb" class="mb-0">
+          <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('project_list') }}">プロジェクト一覧</a></li>
+            <li class="breadcrumb-item">
+              <a href="{{ url_for('project_detail', project_id=project.id) }}">{{ project.name }}</a>
+            </li>
+            <li class="breadcrumb-item active">{% if expense %}費用編集{% else %}費用登録{% endif %}</li>
+          </ol>
+        </nav>
+      </div>
+      <div class="card-body">
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label fw-bold">費用名 <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" required
+                   value="{{ expense.name if expense else '' }}" placeholder="例：外注デザイン費">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">カテゴリ <span class="text-danger">*</span></label>
+            <select name="category" class="form-select" required>
+              {% for cat in categories %}
+              <option value="{{ cat }}" {% if expense and expense.category == cat %}selected{% endif %}>{{ cat }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">金額（円） <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <span class="input-group-text">¥</span>
+              <input type="number" name="amount" class="form-control" min="1" required
+                     value="{{ expense.amount if expense else '' }}">
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">発行日 <span class="text-danger">*</span></label>
+              <input type="date" name="issued_at" class="form-control" required
+                     value="{{ expense.issued_at if expense else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">領収日</label>
+              <input type="date" name="received_at" class="form-control"
+                     value="{{ expense.received_at if expense and expense.received_at else '' }}">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">清算状況 <span class="text-danger">*</span></label>
+            <select name="settlement" class="form-select" required>
+              {% for s in settlements %}
+              <option value="{{ s }}" {% if expense and expense.settlement == s %}selected{% elif not expense and s == '未清算' %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">備考</label>
+            <textarea name="note" class="form-control" rows="2">{{ expense.note if expense else '' }}</textarea>
+          </div>
+
+          <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-lg"></i> 保存
+            </button>
+            <a href="{{ url_for('project_detail', project_id=project.id) }}" class="btn btn-outline-secondary">
+              キャンセル
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
