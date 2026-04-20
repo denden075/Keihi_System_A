@@ -4,6 +4,21 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 
 
+class Customer(Base):
+    __tablename__ = "customers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    contact_person: Mapped[str | None] = mapped_column(String)
+    email: Mapped[str | None] = mapped_column(String)
+    phone: Mapped[str | None] = mapped_column(String)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    projects: Mapped[list["Project"]] = relationship("Project", back_populates="customer")
+
+
 class Project(Base):
     __tablename__ = "projects"
 
@@ -19,9 +34,11 @@ class Project(Base):
     sales_amount: Mapped[int | None] = mapped_column(Integer)
     accepted_year: Mapped[int | None] = mapped_column(Integer)
     accepted_month: Mapped[int | None] = mapped_column(Integer)
+    customer_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("customers.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
+    customer: Mapped["Customer | None"] = relationship("Customer", back_populates="projects")
     expenses: Mapped[list["Expense"]] = relationship(
         "Expense", back_populates="project", cascade="all, delete-orphan"
     )

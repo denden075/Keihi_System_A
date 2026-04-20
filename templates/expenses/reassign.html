@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}費用の付け替え{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <nav aria-label="breadcrumb" class="mb-0">
+          <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('project_list') }}">プロジェクト一覧</a></li>
+            <li class="breadcrumb-item">
+              <a href="{{ url_for('project_detail', project_id=original_project_id) }}">{{ expense.project.name }}</a>
+            </li>
+            <li class="breadcrumb-item active">費用の付け替え</li>
+          </ol>
+        </nav>
+      </div>
+      <div class="card-body">
+        <div class="alert alert-light border mb-4">
+          <div class="small text-muted mb-1">付け替え対象の費用</div>
+          <div class="fw-bold">{{ expense.name }}</div>
+          <div class="text-muted small">
+            {{ expense.category }} ／ {{ expense.amount | yen }} ／ {{ expense.issued_at }}
+          </div>
+          <div class="small mt-1">
+            現在のプロジェクト：<span class="badge bg-secondary">{{ expense.project.name }}</span>
+          </div>
+        </div>
+
+        <form method="post">
+          <div class="mb-4">
+            <label class="form-label fw-bold">付け替え先プロジェクト <span class="text-danger">*</span></label>
+            <select name="new_project_id" class="form-select" required>
+              <option value="">－ 選択してください －</option>
+              {% for p in projects %}
+                {% if p.id != original_project_id %}
+                <option value="{{ p.id }}">
+                  {{ p.name }}
+                  {% if p.project_number %}（{{ p.project_number }}）{% endif %}
+                  ／ {{ p.status }}
+                </option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-warning">
+              <i class="bi bi-arrow-left-right"></i> 付け替え実行
+            </button>
+            <a href="{{ url_for('project_detail', project_id=original_project_id) }}"
+               class="btn btn-outline-secondary">キャンセル</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

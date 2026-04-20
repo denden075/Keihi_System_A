@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}顧客マスタ{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0"><i class="bi bi-people me-2"></i>顧客マスタ</h2>
+  <a href="{{ url_for('customer_new') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg"></i> 顧客登録
+  </a>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    {% if customers %}
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>顧客名</th>
+          <th>担当者</th>
+          <th>メール</th>
+          <th>電話</th>
+          <th>備考</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in customers %}
+        <tr>
+          <td class="fw-bold">{{ c.name }}</td>
+          <td>{{ c.contact_person or '－' }}</td>
+          <td>{{ c.email or '－' }}</td>
+          <td>{{ c.phone or '－' }}</td>
+          <td><small class="text-muted">{{ c.note or '' }}</small></td>
+          <td class="text-end text-nowrap">
+            <a href="{{ url_for('customer_edit', customer_id=c.id) }}"
+               class="btn btn-sm btn-outline-secondary py-0 px-2">編集</a>
+            <form method="post" action="{{ url_for('customer_delete', customer_id=c.id) }}"
+                  class="d-inline"
+                  onsubmit="return confirm('この顧客を削除しますか？（紐づくプロジェクトの顧客は未設定になります）')">
+              <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">削除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="text-center text-muted py-4">顧客データがありません。</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

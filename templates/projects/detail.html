@@ -23,8 +23,14 @@
     <small class="text-muted">
       {{ project.start_date }} 〜 {% if project.end_date %}{{ project.end_date }}{% else %}未定{% endif %}
     </small>
-    {% if project.project_number or project.order_number or project.accepted_label %}
+    {% if project.project_number or project.order_number or project.accepted_label or project.customer %}
     <div class="mt-1">
+      {% if project.customer %}
+        <span class="badge bg-primary me-1">
+          <i class="bi bi-person"></i> {{ project.customer.name }}
+          {% if project.customer.contact_person %}（{{ project.customer.contact_person }}）{% endif %}
+        </span>
+      {% endif %}
       {% if project.project_number %}
         <span class="badge bg-light text-dark border me-1">採番: {{ project.project_number }}</span>
       {% endif %}
@@ -183,6 +189,9 @@
           <td class="text-end text-nowrap">
             <a href="{{ url_for('expense_edit', project_id=project.id, expense_id=e.id) }}"
                class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2">編集</a>
+            <a href="{{ url_for('expense_reassign', expense_id=e.id) }}"
+               class="btn btn-sm btn-outline-warning py-0 px-2"
+               title="別プロジェクトへ付け替え">付替</a>
             <form method="post"
                   action="{{ url_for('expense_delete', project_id=project.id, expense_id=e.id) }}"
                   class="d-inline"

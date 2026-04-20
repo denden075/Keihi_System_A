@@ -8,7 +8,7 @@ from sqlalchemy import func, or_, nulls_last
 
 import database
 from database import init_db
-from models import Project, Expense
+from models import Customer, Project, Expense
 from config import load_settings, save_settings, get_db_path
 
 app = Flask(__name__)
@@ -171,13 +171,15 @@ def project_list():
 
 @app.route("/projects/new", methods=["GET", "POST"])
 def project_new():
-    if request.method == "POST":
-        db = get_db()
-        try:
+    db = get_db()
+    try:
+        customers = db.query(Customer).order_by(Customer.name).all()
+        if request.method == "POST":
             budget_raw = request.form.get("budget", "").strip()
             sales_raw = request.form.get("sales_amount", "").strip()
             ay_raw = request.form.get("accepted_year", "").strip()
             am_raw = request.form.get("accepted_month", "").strip()
+            cid_raw = request.form.get("customer_id", "").strip()
             project = Project(
                 name=request.form["name"].strip(),
                 description=request.form.get("description", "").strip() or None,
@@ -190,18 +192,20 @@ def project_new():
                 sales_amount=int(sales_raw) if sales_raw else None,
                 accepted_year=int(ay_raw) if ay_raw else None,
                 accepted_month=int(am_raw) if am_raw else None,
+                customer_id=int(cid_raw) if cid_raw else None,
             )
             db.add(project)
             db.commit()
             flash("プロジェクトを登録しました。", "success")
             return redirect(url_for("project_detail", project_id=project.id))
-        except Exception as e:
-            db.rollback()
-            flash(f"エラーが発生しました: {e}", "danger")
-        finally:
-            db.close()
-
-    return render_template("projects/form.html", project=None, statuses=STATUSES)
+        else:
+            return render_template("projects/form.html", project=None, statuses=STATUSES, customers=customers)
+    except Exception as e:
+        db.rollback()
+        flash(f"エラーが発生しました: {e}", "danger")
+        return render_template("projects/form.html", project=None, statuses=STATUSES, customers=customers)
+    finally:
+        db.close()
 
 
 # ── プロジェクト詳細 ────────────────────────────────────────────────────────────
@@ -255,11 +259,14 @@ def project_edit(project_id):
             flash("プロジェクトが見つかりません。", "danger")
             return redirect(url_for("project_list"))
 
+        customers = db.query(Customer).order_by(Customer.name).all()
+
         if request.method == "POST":
             budget_raw = request.form.get("budget", "").strip()
             sales_raw = request.form.get("sales_amount", "").strip()
             ay_raw = request.form.get("accepted_year", "").strip()
             am_raw = request.form.get("accepted_month", "").strip()
+            cid_raw = request.form.get("customer_id", "").strip()
             project.name = request.form["name"].strip()
             project.description = request.form.get("description", "").strip() or None
             project.project_number = request.form.get("project_number", "").strip() or None
@@ -271,11 +278,12 @@ def project_edit(project_id):
             project.sales_amount = int(sales_raw) if sales_raw else None
             project.accepted_year = int(ay_raw) if ay_raw else None
             project.accepted_month = int(am_raw) if am_raw else None
+            project.customer_id = int(cid_raw) if cid_raw else None
             db.commit()
             flash("プロジェクトを更新しました。", "success")
             return redirect(url_for("project_detail", project_id=project.id))
 
-        return render_template("projects/form.html", project=project, statuses=STATUSES)
+        return render_template("projects/form.html", project=project, statuses=STATUSES, customers=customers)
     except Exception as e:
         db.rollback()
         flash(f"エラーが発生しました: {e}", "danger")
@@ -405,6 +413,58 @@ def expense_delete(project_id, expense_id):
         db.close()
 
 
+# ── 費用付け替え ────────────────────────────────────────────────────────────────
+
+@app.route("/expenses/<int:expense_id>/reassign", methods=["GET", "POST"])
+def expense_reassign(expense_id):
+    db = get_db()
+    try:
+        expense = db.get(Expense, expense_id)
+        if not expense:
+            flash("費用が見つかりません。", "danger")
+            return redirect(url_for("project_list"))
+
+        original_project_id = expense.project_id
+
+        if request.method == "POST":
+            new_pid_raw = request.form.get("new_project_id", "").strip()
+            if not new_pid_raw:
+                flash("付け替え先プロジェクトを選択してください。", "danger")
+                projects = db.query(Project).order_by(Project.name).all()
+                return render_template(
+                    "expenses/reassign.html",
+                    expense=expense,
+                    projects=projects,
+                    original_project_id=original_project_id,
+                )
+            new_pid = int(new_pid_raw)
+            if new_pid == original_project_id:
+                flash("付け替え先が現在のプロジェクトと同じです。", "warning")
+                return redirect(url_for("project_detail", project_id=original_project_id))
+            target = db.get(Project, new_pid)
+            if not target:
+                flash("付け替え先プロジェクトが見つかりません。", "danger")
+                return redirect(url_for("project_detail", project_id=original_project_id))
+            expense.project_id = new_pid
+            db.commit()
+            flash(f"費用「{expense.name}」を「{target.name}」に付け替えました。", "success")
+            return redirect(url_for("project_detail", project_id=new_pid))
+
+        projects = db.query(Project).order_by(Project.name).all()
+        return render_template(
+            "expenses/reassign.html",
+            expense=expense,
+            projects=projects,
+            original_project_id=original_project_id,
+        )
+    except Exception as e:
+        db.rollback()
+        flash(f"エラーが発生しました: {e}", "danger")
+        return redirect(url_for("project_list"))
+    finally:
+        db.close()
+
+
 # ── CSV出力 ────────────────────────────────────────────────────────────────────
 
 @app.route("/projects/<int:project_id>/export")
@@ -441,6 +501,91 @@ def project_export(project_id):
             mimetype="text/csv",
             headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
         )
+    finally:
+        db.close()
+
+
+# ── 顧客マスタ ─────────────────────────────────────────────────────────────────
+
+@app.route("/customers")
+def customer_list():
+    db = get_db()
+    try:
+        customers = db.query(Customer).order_by(Customer.name).all()
+        return render_template("customers/list.html", customers=customers)
+    finally:
+        db.close()
+
+
+@app.route("/customers/new", methods=["GET", "POST"])
+def customer_new():
+    if request.method == "POST":
+        db = get_db()
+        try:
+            customer = Customer(
+                name=request.form["name"].strip(),
+                contact_person=request.form.get("contact_person", "").strip() or None,
+                email=request.form.get("email", "").strip() or None,
+                phone=request.form.get("phone", "").strip() or None,
+                note=request.form.get("note", "").strip() or None,
+            )
+            db.add(customer)
+            db.commit()
+            flash("顧客を登録しました。", "success")
+            return redirect(url_for("customer_list"))
+        except Exception as e:
+            db.rollback()
+            flash(f"エラーが発生しました: {e}", "danger")
+        finally:
+            db.close()
+
+    return render_template("customers/form.html", customer=None)
+
+
+@app.route("/customers/<int:customer_id>/edit", methods=["GET", "POST"])
+def customer_edit(customer_id):
+    db = get_db()
+    try:
+        customer = db.get(Customer, customer_id)
+        if not customer:
+            flash("顧客が見つかりません。", "danger")
+            return redirect(url_for("customer_list"))
+
+        if request.method == "POST":
+            customer.name = request.form["name"].strip()
+            customer.contact_person = request.form.get("contact_person", "").strip() or None
+            customer.email = request.form.get("email", "").strip() or None
+            customer.phone = request.form.get("phone", "").strip() or None
+            customer.note = request.form.get("note", "").strip() or None
+            db.commit()
+            flash("顧客情報を更新しました。", "success")
+            return redirect(url_for("customer_list"))
+
+        return render_template("customers/form.html", customer=customer)
+    except Exception as e:
+        db.rollback()
+        flash(f"エラーが発生しました: {e}", "danger")
+        return redirect(url_for("customer_list"))
+    finally:
+        db.close()
+
+
+@app.route("/customers/<int:customer_id>/delete", methods=["POST"])
+def customer_delete(customer_id):
+    db = get_db()
+    try:
+        customer = db.get(Customer, customer_id)
+        if customer:
+            for p in customer.projects:
+                p.customer_id = None
+            db.delete(customer)
+            db.commit()
+            flash("顧客を削除しました。", "success")
+        return redirect(url_for("customer_list"))
+    except Exception as e:
+        db.rollback()
+        flash(f"エラーが発生しました: {e}", "danger")
+        return redirect(url_for("customer_list"))
     finally:
         db.close()
 
@@ -483,4 +628,4 @@ def settings():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=False)

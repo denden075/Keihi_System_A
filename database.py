@@ -28,7 +28,7 @@ def reconfigure(db_path: str) -> None:
 
 
 def init_db() -> None:
-    from models import Project, Expense  # noqa: F401
+    from models import Customer, Project, Expense  # noqa: F401
     Base.metadata.create_all(bind=engine)
 
 

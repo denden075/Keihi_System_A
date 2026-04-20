@@ -21,6 +21,25 @@
             <textarea name="description" class="form-control" rows="3">{{ project.description if project else '' }}</textarea>
           </div>
 
+          <div class="mb-3">
+            <label class="form-label fw-bold">顧客</label>
+            <div class="input-group">
+              <select name="customer_id" class="form-select">
+                <option value="">－ 未設定 －</option>
+                {% for c in customers %}
+                <option value="{{ c.id }}"
+                  {% if project and project.customer_id == c.id %}selected{% endif %}>
+                  {{ c.name }}{% if c.contact_person %} （{{ c.contact_person }}）{% endif %}
+                </option>
+                {% endfor %}
+              </select>
+              <a href="{{ url_for('customer_list') }}" class="btn btn-outline-secondary" target="_blank"
+                 title="顧客マスタを管理">
+                <i class="bi bi-people"></i>
+              </a>
+            </div>
+          </div>
+
           <div class="row g-3 mb-3">
             <div class="col-md-6">
               <label class="form-label fw-bold">独自採番</label>
