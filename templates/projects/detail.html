@@ -13,6 +13,9 @@
     <h2 class="mb-0">
       {{ project.name }}
       <span class="badge badge-status-{{ project.status }} fs-6 ms-2">{{ project.status }}</span>
+      {% if project.status == '見積中' and project.probability %}
+        <span class="badge bg-warning text-dark fs-6">確度{{ project.probability }}</span>
+      {% endif %}
       {% if project.is_over_budget %}
         <span class="badge bg-danger fs-6"><i class="bi bi-exclamation-triangle"></i> 予算超過</span>
       {% endif %}
@@ -63,22 +66,20 @@
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <div class="card text-center p-3">
-      <div class="fs-5 fw-bold">{{ project.sales_amount | yen }}</div>
-      <div class="text-muted small">売上金額</div>
+      <div class="fs-5 fw-bold">{{ project.budget | yen }}</div>
+      <div class="text-muted small">予算額</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="card text-center p-3">
       <div class="fs-5 fw-bold">{{ project.total_amount | yen }}</div>
-      <div class="text-muted small">費用合計</div>
+      <div class="text-muted small">費用合計（精算）</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="card text-center p-3">
-      <div class="fs-5 fw-bold {% if project.net_sales is not none and project.net_sales < 0 %}text-danger{% elif project.net_sales is not none %}text-success{% endif %}">
-        {{ project.net_sales | yen }}
-      </div>
-      <div class="text-muted small">純売り（売上－費用）</div>
+      <div class="fs-5 fw-bold text-info">{{ origin_total | yen }}</div>
+      <div class="text-muted small">費用合計（発生）</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
@@ -104,37 +105,22 @@
 </div>
 {% endif %}
 
-<!-- カテゴリ別集計 -->
-{% if category_totals %}
-<div class="card mb-4">
-  <div class="card-header">カテゴリ別集計</div>
-  <div class="card-body p-0">
-    <table class="table table-sm mb-0">
-      <thead class="table-light">
-        <tr><th>カテゴリ</th><th class="text-end">金額</th><th class="text-end">割合</th></tr>
-      </thead>
-      <tbody>
-        {% for cat, amt in category_totals.items() | sort(attribute='1', reverse=True) %}
-        <tr>
-          <td>{{ cat }}</td>
-          <td class="text-end">{{ amt | yen }}</td>
-          <td class="text-end">
-            {% if project.total_amount > 0 %}
-              {{ "%.1f" | format(amt / project.total_amount * 100) }}%
-            {% else %}－{% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endif %}
-
 <!-- 費用一覧 -->
 <div class="card">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-list-ul me-1"></i>費用一覧</span>
+    <div class="d-flex align-items-center gap-3">
+      <span><i class="bi bi-list-ul me-1"></i>費用一覧</span>
+      <div class="btn-group btn-group-sm" role="group">
+        <a href="{{ url_for('project_detail', project_id=project.id, view='settlement', date_from=date_from, date_to=date_to) }}"
+           class="btn {% if view == 'settlement' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+          部材台帳 <span class="badge bg-light text-dark ms-1">{{ settlement_count }}</span>
+        </a>
+        <a href="{{ url_for('project_detail', project_id=project.id, view='origin', date_from=date_from, date_to=date_to) }}"
+           class="btn {% if view == 'origin' %}btn-info{% else %}btn-outline-info{% endif %}">
+          費用集計 <span class="badge bg-light text-dark ms-1">{{ origin_count }}</span>
+        </a>
+      </div>
+    </div>
     <a href="{{ url_for('expense_new', project_id=project.id) }}" class="btn btn-sm btn-primary">
       <i class="bi bi-plus-lg"></i> 費用登録
     </a>
@@ -155,47 +141,69 @@
       </div>
     </form>
   </div>
-  <div class="card-body p-0">
+  <div class="card-body p-0" style="overflow-x:auto;">
     {% if expenses %}
-    <table class="table table-hover mb-0">
+
+    {# ── 部材台帳モード（精算ベース）─────────────────────────────────────── #}
+    {% if view == 'settlement' %}
+    <table class="table table-hover table-sm mb-0 text-nowrap">
       <thead class="table-light">
         <tr>
-          <th>費用名</th>
-          <th>カテゴリ</th>
-          <th class="text-end">金額</th>
-          <th>発行日</th>
-          <th>領収日</th>
-          <th>清算</th>
-          <th>備考</th>
+          <th>請求書処理日</th>
+          <th>購入品名</th>
+          <th>購入先</th>
+          <th>決済方法</th>
+          <th class="text-end">数量</th>
+          <th class="text-end">税抜</th>
+          <th class="text-end">税込</th>
+          <th>担当者</th>
+          <th>入着状況</th>
+          <th>経理</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         {% for e in expenses %}
         <tr>
+          <td>{{ e.invoice_processed_at or '－' }}</td>
           <td>{{ e.name }}</td>
-          <td><span class="badge bg-secondary">{{ e.category }}</span></td>
-          <td class="text-end fw-bold">{{ e.amount | yen }}</td>
-          <td>{{ e.issued_at }}</td>
-          <td>{{ e.received_at or '－' }}</td>
+          <td>{{ e.supplier or '－' }}</td>
           <td>
-            {% if e.settlement == '清算済み' %}
-              <span class="badge bg-success">清算済み</span>
+            {% if e.payment_method == 'クレジットカード' %}
+              <span class="badge bg-info text-dark">CC</span>
+            {% elif e.payment_method == '請求書' %}
+              <span class="badge bg-light text-dark border">請求書</span>
             {% else %}
-              <span class="badge bg-warning text-dark">未清算</span>
+              <span class="text-muted">－</span>
             {% endif %}
           </td>
-          <td><small class="text-muted">{{ e.note or '' }}</small></td>
+          <td class="text-end">{{ e.quantity if e.quantity is not none else '－' }}</td>
+          <td class="text-end fw-bold">{{ e.amount_ex_tax | yen }}</td>
+          <td class="text-end text-muted">{{ e.amount_inc_tax | yen if e.amount_inc_tax is not none else '－' }}</td>
+          <td>{{ e.person_in_charge or '－' }}</td>
+          <td>
+            {% if e.arrival_status == '入着済み' %}
+              <span class="badge bg-success">入着済み</span>
+            {% elif e.arrival_status == '入着待ち' %}
+              <span class="badge bg-warning text-dark">入着待ち</span>
+            {% else %}
+              <span class="badge bg-secondary">未発注</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if e.accounting_processed %}
+              <i class="bi bi-check-circle-fill text-success"></i>
+            {% else %}
+              <span class="text-muted">－</span>
+            {% endif %}
+          </td>
           <td class="text-end text-nowrap">
-            <a href="{{ url_for('expense_edit', project_id=project.id, expense_id=e.id) }}"
-               class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2">編集</a>
+            <a href="{{ url_for('expense_edit', project_id=e.project_id, expense_id=e.id) }}"
+               class="btn btn-outline-secondary btn-sm py-0 px-2">編集</a>
             <a href="{{ url_for('expense_reassign', expense_id=e.id) }}"
-               class="btn btn-sm btn-outline-warning py-0 px-2"
-               title="別プロジェクトへ付け替え">付替</a>
-            <form method="post"
-                  action="{{ url_for('expense_delete', project_id=project.id, expense_id=e.id) }}"
-                  class="d-inline"
-                  onsubmit="return confirm('この費用を削除しますか？')">
+               class="btn btn-sm btn-outline-warning py-0 px-2" title="別プロジェクトへ付け替え">付替</a>
+            <form method="post" action="{{ url_for('expense_delete', project_id=e.project_id, expense_id=e.id) }}"
+                  class="d-inline" onsubmit="return confirm('この費用を削除しますか？')">
               <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">削除</button>
             </form>
           </td>
@@ -205,13 +213,86 @@
       {% if date_from or date_to %}
       <tfoot class="table-light">
         <tr>
-          <td colspan="2" class="fw-bold">絞り込み合計</td>
+          <td colspan="5" class="fw-bold">絞り込み合計（税抜）</td>
           <td class="text-end fw-bold">{{ filtered_total | yen }}</td>
           <td colspan="5"></td>
         </tr>
       </tfoot>
       {% endif %}
     </table>
+
+    {# ── 費用集計モード（発生ベース）─────────────────────────────────────── #}
+    {% else %}
+    <table class="table table-hover table-sm mb-0 text-nowrap">
+      <thead class="table-light">
+        <tr>
+          <th>請求書処理日</th>
+          <th>購入品名</th>
+          <th class="text-end">税抜金額</th>
+          <th>入着状況</th>
+          <th>付替先プロジェクト</th>
+          <th>経理</th>
+          <th>備考</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in expenses %}
+        <tr>
+          <td>{{ e.invoice_processed_at or '－' }}</td>
+          <td>{{ e.name }}</td>
+          <td class="text-end fw-bold">{{ e.amount_ex_tax | yen }}</td>
+          <td>
+            {% if e.arrival_status == '入着済み' %}
+              <span class="badge bg-success">入着済み</span>
+            {% elif e.arrival_status == '入着待ち' %}
+              <span class="badge bg-warning text-dark">入着待ち</span>
+            {% else %}
+              <span class="badge bg-secondary">未発注</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if e.project_id != project.id %}
+              <a href="{{ url_for('project_detail', project_id=e.project_id) }}" class="badge bg-warning text-dark text-decoration-none">
+                {{ e.project.name }}
+              </a>
+            {% else %}
+              <span class="text-muted small">－</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if e.accounting_processed %}
+              <i class="bi bi-check-circle-fill text-success"></i>
+            {% else %}
+              <span class="text-muted">－</span>
+            {% endif %}
+          </td>
+          <td><small class="text-muted">{{ e.note or '' }}</small></td>
+          <td class="text-end text-nowrap">
+            <a href="{{ url_for('expense_edit', project_id=e.project_id, expense_id=e.id) }}"
+               class="btn btn-outline-secondary btn-sm py-0 px-2">編集</a>
+            <a href="{{ url_for('expense_reassign', expense_id=e.id) }}"
+               class="btn btn-sm btn-outline-warning py-0 px-2" title="別プロジェクトへ付け替え">付替</a>
+            <form method="post" action="{{ url_for('expense_delete', project_id=e.project_id, expense_id=e.id) }}"
+                  class="d-inline" onsubmit="return confirm('この費用を削除しますか？')">
+              <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">削除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% if date_from or date_to %}
+      <tfoot class="table-light">
+        <tr>
+          <td colspan="2" class="fw-bold">絞り込み合計（税抜）</td>
+          <td class="text-end fw-bold">{{ filtered_total | yen }}</td>
+          <td colspan="5"></td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+    {% endif %}
+
     {% else %}
     <div class="text-center text-muted py-4">費用データがありません。</div>
     {% endif %}

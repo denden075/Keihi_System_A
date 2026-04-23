@@ -1,6 +1,5 @@
 import csv
 import io
-from collections import defaultdict
 from datetime import date, datetime
 
 from flask import Flask, render_template, request, redirect, url_for, flash, Response
@@ -15,6 +14,7 @@ app = Flask(__name__)
 app.secret_key = "keihi-app-secret"
 
 STATUSES = ["見積中", "進行中", "完了", "失注"]
+PROBABILITIES = ["A", "B", "C"]
 
 
 def get_db():
@@ -53,8 +53,6 @@ def dashboard():
         total_net = total_sales - total_expense
         over_budget_count = sum(1 for p in projects if p.is_over_budget)
 
-        top_projects = sorted(projects, key=lambda p: p.total_amount, reverse=True)[:5]
-
         # 年度別月次集計（3月決算）
         nendo = int(request.args.get("nendo", _current_nendo()))
         monthly_rows = []
@@ -63,18 +61,19 @@ def dashboard():
                 p for p in projects
                 if p.accepted_year == year and p.accepted_month == month
             ]
-            m_sales = sum(p.sales_amount or 0 for p in month_projects)
+            m_budget = sum(p.budget or 0 for p in month_projects)
             m_expense = sum(p.total_amount for p in month_projects)
             monthly_rows.append({
                 "year": year, "month": month,
-                "sales": m_sales, "expense": m_expense,
-                "net": m_sales - m_expense,
+                "budget": m_budget,
+                "expense": m_expense,
+                "residual": m_budget - m_expense,
                 "project_count": len(month_projects),
             })
 
-        nendo_sales = sum(r["sales"] for r in monthly_rows)
+        nendo_budget = sum(r["budget"] for r in monthly_rows)
         nendo_expense = sum(r["expense"] for r in monthly_rows)
-        nendo_net = nendo_sales - nendo_expense
+        nendo_residual = nendo_budget - nendo_expense
 
         # 年度セレクタ用（データがある年度を列挙 + 当年度）
         nendo_set = {_current_nendo()}
@@ -84,21 +83,28 @@ def dashboard():
                 nendo_set.add(fy)
         nendo_list = sorted(nendo_set, reverse=True)
 
+        # 当月検収プロジェクト
+        today = date.today()
+        current_month_projects = [
+            p for p in projects
+            if p.accepted_year == today.year and p.accepted_month == today.month
+        ]
+
         return render_template(
             "dashboard.html",
             total_projects=total_projects,
             active_projects=active_projects,
             total_expense=total_expense,
-            total_sales=total_sales,
-            total_net=total_net,
             over_budget_count=over_budget_count,
-            top_projects=top_projects,
             monthly_rows=monthly_rows,
             nendo=nendo,
             nendo_list=nendo_list,
-            nendo_sales=nendo_sales,
+            nendo_budget=nendo_budget,
             nendo_expense=nendo_expense,
-            nendo_net=nendo_net,
+            nendo_residual=nendo_residual,
+            current_month_projects=current_month_projects,
+            current_year=today.year,
+            current_month=today.month,
         )
     finally:
         db.close()
@@ -180,6 +186,8 @@ def project_new():
             ay_raw = request.form.get("accepted_year", "").strip()
             am_raw = request.form.get("accepted_month", "").strip()
             cid_raw = request.form.get("customer_id", "").strip()
+            status = request.form["status"]
+            prob_raw = request.form.get("probability", "").strip()
             project = Project(
                 name=request.form["name"].strip(),
                 description=request.form.get("description", "").strip() or None,
@@ -187,23 +195,24 @@ def project_new():
                 order_number=request.form.get("order_number", "").strip() or None,
                 start_date=date.fromisoformat(request.form["start_date"]),
                 end_date=date.fromisoformat(request.form["end_date"]) if request.form.get("end_date") else None,
-                status=request.form["status"],
+                status=status,
                 budget=int(budget_raw) if budget_raw else None,
                 sales_amount=int(sales_raw) if sales_raw else None,
                 accepted_year=int(ay_raw) if ay_raw else None,
                 accepted_month=int(am_raw) if am_raw else None,
                 customer_id=int(cid_raw) if cid_raw else None,
+                probability=prob_raw if status == "見積中" and prob_raw in PROBABILITIES else None,
             )
             db.add(project)
             db.commit()
             flash("プロジェクトを登録しました。", "success")
             return redirect(url_for("project_detail", project_id=project.id))
         else:
-            return render_template("projects/form.html", project=None, statuses=STATUSES, customers=customers)
+            return render_template("projects/form.html", project=None, statuses=STATUSES, customers=customers, probabilities=PROBABILITIES)
     except Exception as e:
         db.rollback()
         flash(f"エラーが発生しました: {e}", "danger")
-        return render_template("projects/form.html", project=None, statuses=STATUSES, customers=customers)
+        return render_template("projects/form.html", project=None, statuses=STATUSES, customers=customers, probabilities=PROBABILITIES)
     finally:
         db.close()
 
@@ -221,28 +230,45 @@ def project_detail(project_id):
 
         date_from = request.args.get("date_from", "")
         date_to = request.args.get("date_to", "")
+        view = request.args.get("view", "settlement")  # settlement | origin
 
-        expenses_query = db.query(Expense).filter(Expense.project_id == project_id)
+        # 精算ベース：project_id = このプロジェクト
+        settlement_q = db.query(Expense).filter(Expense.project_id == project_id)
+        # 発生ベース：origin_project_id = このプロジェクト、または origin未設定かつ project_id = このプロジェクト
+        from sqlalchemy import or_, and_
+        origin_q = db.query(Expense).filter(
+            or_(
+                Expense.origin_project_id == project_id,
+                and_(Expense.origin_project_id.is_(None), Expense.project_id == project_id),
+            )
+        )
+
         if date_from:
-            expenses_query = expenses_query.filter(Expense.occurred_at >= date.fromisoformat(date_from))
+            settlement_q = settlement_q.filter(Expense.issued_at >= date.fromisoformat(date_from))
+            origin_q = origin_q.filter(Expense.issued_at >= date.fromisoformat(date_from))
         if date_to:
-            expenses_query = expenses_query.filter(Expense.occurred_at <= date.fromisoformat(date_to))
-        expenses = expenses_query.order_by(Expense.issued_at.desc()).all()
+            settlement_q = settlement_q.filter(Expense.issued_at <= date.fromisoformat(date_to))
+            origin_q = origin_q.filter(Expense.issued_at <= date.fromisoformat(date_to))
 
-        category_totals = defaultdict(int)
-        filtered_total = 0
-        for e in expenses:
-            category_totals[e.category] += e.amount
-            filtered_total += e.amount
+        settlement_expenses = settlement_q.order_by(Expense.issued_at.desc()).all()
+        origin_expenses = origin_q.order_by(Expense.issued_at.desc()).all()
+
+        expenses = origin_expenses if view == "origin" else settlement_expenses
+
+        filtered_total = sum(e.amount_ex_tax for e in expenses)
+        origin_total = sum(e.amount_ex_tax for e in origin_expenses)
 
         return render_template(
             "projects/detail.html",
             project=project,
             expenses=expenses,
-            category_totals=dict(category_totals),
             filtered_total=filtered_total,
             date_from=date_from,
             date_to=date_to,
+            view=view,
+            origin_total=origin_total,
+            settlement_count=len(settlement_expenses),
+            origin_count=len(origin_expenses),
         )
     finally:
         db.close()
@@ -267,23 +293,26 @@ def project_edit(project_id):
             ay_raw = request.form.get("accepted_year", "").strip()
             am_raw = request.form.get("accepted_month", "").strip()
             cid_raw = request.form.get("customer_id", "").strip()
+            status = request.form["status"]
+            prob_raw = request.form.get("probability", "").strip()
             project.name = request.form["name"].strip()
             project.description = request.form.get("description", "").strip() or None
             project.project_number = request.form.get("project_number", "").strip() or None
             project.order_number = request.form.get("order_number", "").strip() or None
             project.start_date = date.fromisoformat(request.form["start_date"])
             project.end_date = date.fromisoformat(request.form["end_date"]) if request.form.get("end_date") else None
-            project.status = request.form["status"]
+            project.status = status
             project.budget = int(budget_raw) if budget_raw else None
             project.sales_amount = int(sales_raw) if sales_raw else None
             project.accepted_year = int(ay_raw) if ay_raw else None
             project.accepted_month = int(am_raw) if am_raw else None
             project.customer_id = int(cid_raw) if cid_raw else None
+            project.probability = prob_raw if status == "見積中" and prob_raw in PROBABILITIES else None
             db.commit()
             flash("プロジェクトを更新しました。", "success")
             return redirect(url_for("project_detail", project_id=project.id))
 
-        return render_template("projects/form.html", project=project, statuses=STATUSES, customers=customers)
+        return render_template("projects/form.html", project=project, statuses=STATUSES, customers=customers, probabilities=PROBABILITIES)
     except Exception as e:
         db.rollback()
         flash(f"エラーが発生しました: {e}", "danger")
@@ -323,15 +352,29 @@ def expense_new(project_id):
             flash("プロジェクトが見つかりません。", "danger")
             return redirect(url_for("project_list"))
 
+        projects = db.query(Project).order_by(Project.name).all()
+
         if request.method == "POST":
+            opid_raw = request.form.get("origin_project_id", "").strip()
+            opid = int(opid_raw) if opid_raw else None
+            amount_inc_raw = request.form.get("amount_inc_tax", "").strip()
+            qty_raw = request.form.get("quantity", "").strip()
             expense = Expense(
                 project_id=project_id,
+                origin_project_id=opid if opid != project_id else None,
                 name=request.form["name"].strip(),
-                category=request.form["category"],
-                amount=int(request.form["amount"]),
+                quantity=int(qty_raw) if qty_raw else None,
+                amount_ex_tax=int(request.form["amount_ex_tax"]),
+                amount_inc_tax=int(amount_inc_raw) if amount_inc_raw else None,
                 issued_at=date.fromisoformat(request.form["issued_at"]),
-                received_at=date.fromisoformat(request.form["received_at"]) if request.form.get("received_at") else None,
-                settlement=request.form["settlement"],
+                invoice_processed_at=date.fromisoformat(request.form["invoice_processed_at"]) if request.form.get("invoice_processed_at") else None,
+                arrival_date=date.fromisoformat(request.form["arrival_date"]) if request.form.get("arrival_date") else None,
+                supplier=request.form.get("supplier", "").strip() or None,
+                payment_method=request.form.get("payment_method") or None,
+                order_number=request.form.get("order_number", "").strip() or None,
+                person_in_charge=request.form.get("person_in_charge", "").strip() or None,
+                arrival_status=request.form.get("arrival_status", "未発注"),
+                accounting_processed="accounting_processed" in request.form,
                 note=request.form.get("note", "").strip() or None,
             )
             db.add(expense)
@@ -343,8 +386,9 @@ def expense_new(project_id):
             "expenses/form.html",
             project=project,
             expense=None,
-            categories=Expense.CATEGORIES,
-            settlements=Expense.SETTLEMENTS,
+            payment_methods=Expense.PAYMENT_METHODS,
+            arrival_statuses=Expense.ARRIVAL_STATUSES,
+            projects=projects,
         )
     except Exception as e:
         db.rollback()
@@ -366,14 +410,28 @@ def expense_edit(project_id, expense_id):
             flash("データが見つかりません。", "danger")
             return redirect(url_for("project_list"))
 
+        projects = db.query(Project).order_by(Project.name).all()
+
         if request.method == "POST":
+            opid_raw = request.form.get("origin_project_id", "").strip()
+            opid = int(opid_raw) if opid_raw else None
+            amount_inc_raw = request.form.get("amount_inc_tax", "").strip()
+            qty_raw = request.form.get("quantity", "").strip()
             expense.name = request.form["name"].strip()
-            expense.category = request.form["category"]
-            expense.amount = int(request.form["amount"])
+            expense.quantity = int(qty_raw) if qty_raw else None
+            expense.amount_ex_tax = int(request.form["amount_ex_tax"])
+            expense.amount_inc_tax = int(amount_inc_raw) if amount_inc_raw else None
             expense.issued_at = date.fromisoformat(request.form["issued_at"])
-            expense.received_at = date.fromisoformat(request.form["received_at"]) if request.form.get("received_at") else None
-            expense.settlement = request.form["settlement"]
+            expense.invoice_processed_at = date.fromisoformat(request.form["invoice_processed_at"]) if request.form.get("invoice_processed_at") else None
+            expense.arrival_date = date.fromisoformat(request.form["arrival_date"]) if request.form.get("arrival_date") else None
+            expense.supplier = request.form.get("supplier", "").strip() or None
+            expense.payment_method = request.form.get("payment_method") or None
+            expense.order_number = request.form.get("order_number", "").strip() or None
+            expense.person_in_charge = request.form.get("person_in_charge", "").strip() or None
+            expense.arrival_status = request.form.get("arrival_status", "未発注")
+            expense.accounting_processed = "accounting_processed" in request.form
             expense.note = request.form.get("note", "").strip() or None
+            expense.origin_project_id = opid if opid != project_id else None
             db.commit()
             flash("費用を更新しました。", "success")
             return redirect(url_for("project_detail", project_id=project_id))
@@ -382,8 +440,9 @@ def expense_edit(project_id, expense_id):
             "expenses/form.html",
             project=project,
             expense=expense,
-            categories=Expense.CATEGORIES,
-            settlements=Expense.SETTLEMENTS,
+            payment_methods=Expense.PAYMENT_METHODS,
+            arrival_statuses=Expense.ARRIVAL_STATUSES,
+            projects=projects,
         )
     except Exception as e:
         db.rollback()
@@ -430,7 +489,9 @@ def expense_reassign(expense_id):
             new_pid_raw = request.form.get("new_project_id", "").strip()
             if not new_pid_raw:
                 flash("付け替え先プロジェクトを選択してください。", "danger")
-                projects = db.query(Project).order_by(Project.name).all()
+                projects = db.query(Project).filter(
+                    Project.status.notin_(["完了", "失注"])
+                ).order_by(Project.name).all()
                 return render_template(
                     "expenses/reassign.html",
                     expense=expense,
@@ -445,12 +506,16 @@ def expense_reassign(expense_id):
             if not target:
                 flash("付け替え先プロジェクトが見つかりません。", "danger")
                 return redirect(url_for("project_detail", project_id=original_project_id))
+            if expense.origin_project_id is None:
+                expense.origin_project_id = expense.project_id
             expense.project_id = new_pid
             db.commit()
             flash(f"費用「{expense.name}」を「{target.name}」に付け替えました。", "success")
             return redirect(url_for("project_detail", project_id=new_pid))
 
-        projects = db.query(Project).order_by(Project.name).all()
+        projects = db.query(Project).filter(
+            Project.status.notin_(["完了", "失注"])
+        ).order_by(Project.name).all()
         return render_template(
             "expenses/reassign.html",
             expense=expense,
@@ -485,13 +550,27 @@ def project_export(project_id):
 
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["費用名", "カテゴリ", "金額（円）", "発行日", "領収日", "清算状況", "備考"])
+        writer.writerow([
+            "費用名", "数量", "金額（税抜）", "金額（税込）",
+            "発行日", "請求書処理日", "入着日",
+            "購入先", "決済方法", "注文番号", "担当者",
+            "入着状況", "経理処理済み", "備考",
+        ])
         for e in expenses:
             writer.writerow([
-                e.name, e.category, e.amount,
+                e.name,
+                e.quantity if e.quantity is not None else "",
+                e.amount_ex_tax,
+                e.amount_inc_tax if e.amount_inc_tax is not None else "",
                 e.issued_at.isoformat(),
-                e.received_at.isoformat() if e.received_at else "",
-                e.settlement,
+                e.invoice_processed_at.isoformat() if e.invoice_processed_at else "",
+                e.arrival_date.isoformat() if e.arrival_date else "",
+                e.supplier or "",
+                e.payment_method or "",
+                e.order_number or "",
+                e.person_in_charge or "",
+                e.arrival_status,
+                "済" if e.accounting_processed else "",
                 e.note or "",
             ])
 
@@ -625,6 +704,11 @@ def settings():
         db_exists=db_exists,
         db_size=db_size,
     )
+
+
+@app.route("/diagram")
+def db_diagram():
+    return render_template("db_diagram.html")
 
 
 if __name__ == "__main__":

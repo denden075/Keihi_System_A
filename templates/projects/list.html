@@ -91,6 +91,9 @@
             <h5 class="card-title mb-1">
               <a href="{{ url_for('project_detail', project_id=p.id) }}" class="text-decoration-none">{{ p.name }}</a>
               <span class="badge badge-status-{{ p.status }} ms-2">{{ p.status }}</span>
+              {% if p.status == '見積中' and p.probability %}
+                <span class="badge bg-warning text-dark ms-1">確度{{ p.probability }}</span>
+              {% endif %}
               {% if p.is_over_budget %}
                 <span class="badge bg-danger ms-1"><i class="bi bi-exclamation-triangle"></i> 予算超過</span>
               {% endif %}

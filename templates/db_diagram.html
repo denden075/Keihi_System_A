@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>データベース構成図</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+      background: #f0f4f8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      font-size: 1.2rem;
+      color: #555;
+      margin-bottom: 48px;
+      letter-spacing: 0.05em;
+    }
+
+    .diagram {
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+
+    /* ---- エンティティカード ---- */
+    .entity {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.10);
+      padding: 28px 32px;
+      text-align: center;
+      min-width: 160px;
+    }
+
+    .entity .icon {
+      font-size: 2.6rem;
+      margin-bottom: 10px;
+    }
+
+    .entity .label {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #2d3748;
+    }
+
+    .entity .sublabel {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 4px;
+    }
+
+    /* ---- 色テーマ ---- */
+    .entity.customer { border-top: 5px solid #667eea; }
+    .entity.project  { border-top: 5px solid #48bb78; }
+    .entity.expense  { border-top: 5px solid #ed8936; }
+
+    /* ---- 矢印コネクタ ---- */
+    .connector {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 140px;
+      position: relative;
+    }
+
+    .connector .ratio {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      gap: 4px;
+    }
+
+    .badge {
+      background: #fff;
+      border-radius: 50%;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      font-weight: 800;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      flex-shrink: 0;
+    }
+
+    .badge.one  { color: #667eea; border: 2px solid #667eea; }
+    .badge.many { color: #ed8936; border: 2px solid #ed8936; }
+    .badge.many-green { color: #48bb78; border: 2px solid #48bb78; }
+
+    .line {
+      flex: 1;
+      height: 3px;
+      background: linear-gradient(90deg, #cbd5e0, #cbd5e0);
+      position: relative;
+    }
+
+    .line::after {
+      content: '';
+      position: absolute;
+      right: -1px;
+      top: 50%;
+      transform: translateY(-50%);
+      border-left: 10px solid #cbd5e0;
+      border-top: 6px solid transparent;
+      border-bottom: 6px solid transparent;
+    }
+
+    .connector .caption {
+      font-size: 0.72rem;
+      color: #888;
+      margin-top: 10px;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .connector .caption strong {
+      color: #4a5568;
+    }
+
+    /* ---- 補足メモ ---- */
+    .notes {
+      margin-top: 52px;
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .note-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+      padding: 18px 24px;
+      max-width: 260px;
+      font-size: 0.85rem;
+      color: #4a5568;
+      line-height: 1.7;
+    }
+
+    .note-card .note-title {
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot.purple { background: #667eea; }
+    .dot.green  { background: #48bb78; }
+    .dot.orange { background: #ed8936; }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 1px 7px;
+      border-radius: 20px;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+    .tag.optional { background: #ebf4ff; color: #3182ce; }
+    .tag.required { background: #fff3cd; color: #b7791f; }
+    .tag.cascade  { background: #fce8e8; color: #c53030; }
+
+    /* 振替元の補助線 */
+    .transfer-note {
+      margin-top: 32px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+      padding: 16px 28px;
+      font-size: 0.83rem;
+      color: #718096;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .transfer-note .arrow-back {
+      font-size: 1.2rem;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>データベース構成図</h1>
+
+  <div class="diagram">
+
+    <!-- 顧客 -->
+    <div class="entity customer">
+      <div class="icon">🏢</div>
+      <div class="label">顧客</div>
+      <div class="sublabel">名前・連絡先</div>
+    </div>
+
+    <!-- 顧客 → プロジェクト -->
+    <div class="connector">
+      <div class="ratio">
+        <div class="badge one">1</div>
+        <div class="line"></div>
+        <div class="badge many-green">多</div>
+      </div>
+      <div class="caption">
+        1社の顧客に<br>
+        <strong>複数のプロジェクト</strong><br>
+        <span class="tag optional">任意ひも付け</span>
+      </div>
+    </div>
+
+    <!-- プロジェクト -->
+    <div class="entity project">
+      <div class="icon">📁</div>
+      <div class="label">プロジェクト</div>
+      <div class="sublabel">予算・売上・ステータス</div>
+    </div>
+
+    <!-- プロジェクト → 経費 -->
+    <div class="connector">
+      <div class="ratio">
+        <div class="badge one">1</div>
+        <div class="line"></div>
+        <div class="badge many">多</div>
+      </div>
+      <div class="caption">
+        1つのプロジェクトに<br>
+        <strong>複数の経費明細</strong><br>
+        <span class="tag cascade">削除時に連動削除</span>
+      </div>
+    </div>
+
+    <!-- 経費 -->
+    <div class="entity expense">
+      <div class="icon">🧾</div>
+      <div class="label">経費</div>
+      <div class="sublabel">金額・カテゴリ・清算状況</div>
+    </div>
+
+  </div>
+
+  <!-- 振替元の補足 -->
+  <div class="transfer-note">
+    <span class="arrow-back">↩️</span>
+    <span>経費は <strong>振替元プロジェクト</strong> を別途持てる（他プロジェクトから移動してきた経費を追跡するため）</span>
+  </div>
+
+  <!-- 補足カード -->
+  <div class="notes">
+
+    <div class="note-card">
+      <div class="note-title"><span class="dot purple"></span>顧客</div>
+      顧客はプロジェクトへのひも付けが<strong>任意</strong>。<br>
+      顧客なしでもプロジェクトは作成できる。
+    </div>
+
+    <div class="note-card">
+      <div class="note-title"><span class="dot green"></span>プロジェクト</div>
+      予算・売上・ステータス（見積中／進行中／完了／失注）を管理。<br>
+      経費合計が予算を超えると<strong>警告</strong>が表示される。
+    </div>
+
+    <div class="note-card">
+      <div class="note-title"><span class="dot orange"></span>経費</div>
+      必ずプロジェクトに紐づく。<br>
+      プロジェクトを削除すると、紐づく経費も<strong>すべて自動削除</strong>される。
+    </div>
+
+  </div>
+
+</body>
+</html>

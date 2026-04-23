@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-md-7">
+  <div class="col-md-8">
     <div class="card">
       <div class="card-header">
         <nav aria-label="breadcrumb" class="mb-0">
@@ -18,30 +18,40 @@
       </div>
       <div class="card-body">
         <form method="post">
+
+          <!-- 購入品名 -->
           <div class="mb-3">
-            <label class="form-label fw-bold">費用名 <span class="text-danger">*</span></label>
+            <label class="form-label fw-bold">購入品名 <span class="text-danger">*</span></label>
             <input type="text" name="name" class="form-control" required
                    value="{{ expense.name if expense else '' }}" placeholder="例：外注デザイン費">
           </div>
 
-          <div class="mb-3">
-            <label class="form-label fw-bold">カテゴリ <span class="text-danger">*</span></label>
-            <select name="category" class="form-select" required>
-              {% for cat in categories %}
-              <option value="{{ cat }}" {% if expense and expense.category == cat %}selected{% endif %}>{{ cat }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label fw-bold">金額（円） <span class="text-danger">*</span></label>
-            <div class="input-group">
-              <span class="input-group-text">¥</span>
-              <input type="number" name="amount" class="form-control" min="1" required
-                     value="{{ expense.amount if expense else '' }}">
+          <!-- 金額（税抜・税込）・数量 -->
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label fw-bold">金額（税抜） <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <span class="input-group-text">¥</span>
+                <input type="number" name="amount_ex_tax" class="form-control" min="0" required
+                       value="{{ expense.amount_ex_tax if expense else '' }}">
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">金額（税込）</label>
+              <div class="input-group">
+                <span class="input-group-text">¥</span>
+                <input type="number" name="amount_inc_tax" class="form-control" min="0"
+                       value="{{ expense.amount_inc_tax if expense and expense.amount_inc_tax is not none else '' }}">
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">数量</label>
+              <input type="number" name="quantity" class="form-control" min="1"
+                     value="{{ expense.quantity if expense and expense.quantity is not none else '' }}">
             </div>
           </div>
 
+          <!-- 発行日・請求書処理日 -->
           <div class="row g-3 mb-3">
             <div class="col-md-6">
               <label class="form-label fw-bold">発行日 <span class="text-danger">*</span></label>
@@ -49,21 +59,93 @@
                      value="{{ expense.issued_at if expense else '' }}">
             </div>
             <div class="col-md-6">
-              <label class="form-label fw-bold">領収日</label>
-              <input type="date" name="received_at" class="form-control"
-                     value="{{ expense.received_at if expense and expense.received_at else '' }}">
+              <label class="form-label fw-bold">請求書処理日</label>
+              <input type="date" name="invoice_processed_at" class="form-control"
+                     value="{{ expense.invoice_processed_at if expense and expense.invoice_processed_at else '' }}">
             </div>
           </div>
 
+          <!-- 入着日・購入先 -->
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">入着日</label>
+              <input type="date" name="arrival_date" class="form-control"
+                     value="{{ expense.arrival_date if expense and expense.arrival_date else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">購入先</label>
+              <input type="text" name="supplier" class="form-control"
+                     value="{{ expense.supplier if expense else '' }}" placeholder="例：〇〇商事">
+            </div>
+          </div>
+
+          <!-- 決済方法・注文番号 -->
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">決済方法</label>
+              <select name="payment_method" class="form-select">
+                <option value="">－ 未選択 －</option>
+                {% for m in payment_methods %}
+                <option value="{{ m }}" {% if expense and expense.payment_method == m %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">注文番号</label>
+              <input type="text" name="order_number" class="form-control"
+                     value="{{ expense.order_number if expense else '' }}">
+            </div>
+          </div>
+
+          <!-- 担当者・入着状況 -->
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">担当者</label>
+              <input type="text" name="person_in_charge" class="form-control"
+                     value="{{ expense.person_in_charge if expense else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">入着状況 <span class="text-danger">*</span></label>
+              <select name="arrival_status" class="form-select" required>
+                {% for s in arrival_statuses %}
+                <option value="{{ s }}"
+                  {% if expense and expense.arrival_status == s %}selected
+                  {% elif not expense and s == '未発注' %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <!-- 経理処理済み -->
           <div class="mb-3">
-            <label class="form-label fw-bold">清算状況 <span class="text-danger">*</span></label>
-            <select name="settlement" class="form-select" required>
-              {% for s in settlements %}
-              <option value="{{ s }}" {% if expense and expense.settlement == s %}selected{% elif not expense and s == '未清算' %}selected{% endif %}>{{ s }}</option>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="accounting_processed" id="accounting_processed"
+                     {% if expense and expense.accounting_processed %}checked{% endif %}>
+              <label class="form-check-label fw-bold" for="accounting_processed">
+                経理処理済み
+              </label>
+            </div>
+          </div>
+
+          <!-- 本来のプロジェクト -->
+          <div class="mb-3">
+            <label class="form-label fw-bold">本来のプロジェクト
+              <small class="text-muted fw-normal">（精算プロジェクトと異なる場合のみ設定）</small>
+            </label>
+            <select name="origin_project_id" class="form-select">
+              <option value="">－ 未設定（精算プロジェクトと同じ）－</option>
+              {% for p in projects %}
+                {% if p.id != project.id %}
+                <option value="{{ p.id }}"
+                  {% if expense and expense.origin_project_id == p.id %}selected{% endif %}>
+                  {{ p.name }}{% if p.project_number %} （{{ p.project_number }}）{% endif %}
+                </option>
+                {% endif %}
               {% endfor %}
             </select>
           </div>
 
+          <!-- 備考 -->
           <div class="mb-3">
             <label class="form-label fw-bold">備考</label>
             <textarea name="note" class="form-control" rows="2">{{ expense.note if expense else '' }}</textarea>

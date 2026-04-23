@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from sqlalchemy import Integer, String, Text, Date, DateTime, ForeignKey
+from sqlalchemy import Boolean, Integer, String, Text, Date, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 
@@ -35,17 +35,18 @@ class Project(Base):
     accepted_year: Mapped[int | None] = mapped_column(Integer)
     accepted_month: Mapped[int | None] = mapped_column(Integer)
     customer_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("customers.id"), nullable=True)
+    probability: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     customer: Mapped["Customer | None"] = relationship("Customer", back_populates="projects")
     expenses: Mapped[list["Expense"]] = relationship(
-        "Expense", back_populates="project", cascade="all, delete-orphan"
+        "Expense", back_populates="project", foreign_keys="Expense.project_id", cascade="all, delete-orphan"
     )
 
     @property
     def total_amount(self) -> int:
-        return sum(e.amount for e in self.expenses)
+        return sum(e.amount_ex_tax for e in self.expenses)
 
     @property
     def net_sales(self) -> int | None:
@@ -81,19 +82,28 @@ class Project(Base):
 class Expense(Base):
     __tablename__ = "expenses"
 
-    CATEGORIES = ["人件費", "外注費", "購入品", "備品", "交通費", "その他"]
-    SETTLEMENTS = ["未清算", "清算済み"]
+    PAYMENT_METHODS = ["請求書", "クレジットカード"]
+    ARRIVAL_STATUSES = ["未発注", "入着待ち", "入着済み"]
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False)
+    origin_project_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("projects.id"), nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    category: Mapped[str] = mapped_column(String, nullable=False)
-    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity: Mapped[int | None] = mapped_column(Integer)
+    amount_ex_tax: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_inc_tax: Mapped[int | None] = mapped_column(Integer)
     issued_at: Mapped[date] = mapped_column(Date, nullable=False)
-    received_at: Mapped[date | None] = mapped_column(Date)
-    settlement: Mapped[str] = mapped_column(String, nullable=False, default="未清算")
+    invoice_processed_at: Mapped[date | None] = mapped_column(Date)
+    arrival_date: Mapped[date | None] = mapped_column(Date)
+    supplier: Mapped[str | None] = mapped_column(String)
+    payment_method: Mapped[str | None] = mapped_column(String)
+    order_number: Mapped[str | None] = mapped_column(String)
+    person_in_charge: Mapped[str | None] = mapped_column(String)
+    arrival_status: Mapped[str] = mapped_column(String, nullable=False, default="未発注")
+    accounting_processed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-    project: Mapped["Project"] = relationship("Project", back_populates="expenses")
+    project: Mapped["Project"] = relationship("Project", back_populates="expenses", foreign_keys="Expense.project_id")
+    origin_project: Mapped["Project | None"] = relationship("Project", foreign_keys="Expense.origin_project_id")

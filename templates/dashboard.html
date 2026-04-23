@@ -23,18 +23,10 @@
       <div class="text-muted small">進行中</div>
     </div>
   </div>
-  <div class="col-6 col-md-3">
+  <div class="col-6 col-md-4">
     <div class="card text-center p-3">
-      <div class="fs-5 fw-bold">{{ total_sales | yen }}</div>
-      <div class="text-muted small">総売上</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card text-center p-3">
-      <div class="fs-5 fw-bold {{ 'text-danger' if total_net < 0 else 'text-success' }}">
-        {{ total_net | yen }}
-      </div>
-      <div class="text-muted small">総純売り</div>
+      <div class="fs-5 fw-bold">{{ total_expense | yen }}</div>
+      <div class="text-muted small">総費用合計（税抜）</div>
     </div>
   </div>
   <div class="col-6 col-md-2">
@@ -69,9 +61,9 @@
         <thead class="table-light">
           <tr>
             <th>月</th>
-            <th class="text-end">売上</th>
-            <th class="text-end">費用</th>
-            <th class="text-end">純売り</th>
+            <th class="text-end">予算</th>
+            <th class="text-end">発生費用（税抜）</th>
+            <th class="text-end">予算残高</th>
             <th class="text-center">件数</th>
           </tr>
         </thead>
@@ -88,10 +80,10 @@
               {{ row.year }}年{{ row.month }}月
               {% endif %}
             </td>
-            <td class="text-end">{% if row.sales > 0 %}{{ row.sales | yen }}{% else %}－{% endif %}</td>
+            <td class="text-end">{% if row.budget > 0 %}{{ row.budget | yen }}{% else %}－{% endif %}</td>
             <td class="text-end">{% if row.expense > 0 %}{{ row.expense | yen }}{% else %}－{% endif %}</td>
-            <td class="text-end {% if row.net < 0 %}text-danger{% elif row.net > 0 %}text-success{% endif %}">
-              {% if row.sales > 0 or row.expense > 0 %}{{ row.net | yen }}{% else %}－{% endif %}
+            <td class="text-end {% if row.residual < 0 %}text-danger{% endif %}">
+              {% if row.budget > 0 or row.expense > 0 %}{{ row.residual | yen }}{% else %}－{% endif %}
             </td>
             <td class="text-center">
               {% if row.project_count > 0 %}
@@ -106,11 +98,9 @@
         <tfoot class="table-secondary fw-bold">
           <tr>
             <td>年度合計</td>
-            <td class="text-end">{{ nendo_sales | yen }}</td>
+            <td class="text-end">{{ nendo_budget | yen }}</td>
             <td class="text-end">{{ nendo_expense | yen }}</td>
-            <td class="text-end {{ 'text-danger' if nendo_net < 0 else 'text-success' }}">
-              {{ nendo_net | yen }}
-            </td>
+            <td class="text-end {% if nendo_residual < 0 %}text-danger{% endif %}">{{ nendo_residual | yen }}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -119,25 +109,25 @@
   </div>
 </div>
 
-<!-- 費用上位プロジェクト -->
+<!-- 当月検収プロジェクト -->
 <div class="card">
   <div class="card-header">
-    <i class="bi bi-bar-chart me-1"></i>費用上位プロジェクト（Top 5）
+    <i class="bi bi-calendar-check me-1"></i>当月検収プロジェクト（{{ current_year }}年{{ current_month }}月）
   </div>
   <div class="card-body p-0">
-    {% if top_projects %}
+    {% if current_month_projects %}
     <table class="table table-hover mb-0">
       <thead class="table-light">
         <tr>
           <th>プロジェクト名</th>
           <th>ステータス</th>
-          <th class="text-end">売上</th>
-          <th class="text-end">費用合計</th>
-          <th class="text-end">純売り</th>
+          <th class="text-end">予算</th>
+          <th class="text-end">費用合計（税抜）</th>
+          <th class="text-end">予算残高</th>
         </tr>
       </thead>
       <tbody>
-        {% for p in top_projects %}
+        {% for p in current_month_projects %}
         <tr>
           <td>
             <a href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a>
@@ -146,17 +136,17 @@
             {% endif %}
           </td>
           <td><span class="badge badge-status-{{ p.status }}">{{ p.status }}</span></td>
-          <td class="text-end">{{ p.sales_amount | yen }}</td>
+          <td class="text-end">{{ p.budget | yen }}</td>
           <td class="text-end">{{ p.total_amount | yen }}</td>
-          <td class="text-end {% if p.net_sales is not none and p.net_sales < 0 %}text-danger{% elif p.net_sales is not none %}text-success{% endif %}">
-            {{ p.net_sales | yen }}
+          <td class="text-end {% if p.is_over_budget %}text-danger{% endif %}">
+            {{ p.budget_remaining | yen }}
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     {% else %}
-    <div class="text-center text-muted py-4">プロジェクトがまだありません。</div>
+    <div class="text-center text-muted py-4">当月（{{ current_year }}年{{ current_month }}月）に検収予定のプロジェクトはありません。</div>
     {% endif %}
   </div>
 </div>
